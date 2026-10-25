@@ -1,0 +1,42 @@
+name: 7. Monthly Rebuild
+run-name: Monthly Rebuild
+
+# Rebuilds the current version (no new changes are copied) once a month, so
+# the TestFlight build never reaches its 90-day expiry.
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'   # 06:00 UTC on the 1st of every month
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      # GitHub switches off scheduled workflows after 60 days without commits.
+      # A dated empty commit on a side branch counts as activity and never
+      # touches main.
+      - name: Keep the repository active
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin alive >/dev/null; then
+            git fetch origin alive
+            git checkout -B alive origin/alive
+          else
+            git checkout --orphan alive
+            git rm -rf --quiet .
+          fi
+          git commit --allow-empty -m "keep alive $(date -u +%F)"
+          git push origin alive
+
+      - name: Start the build
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh workflow run build_iAPS.yml --repo "${{ github.repository }}" --ref main

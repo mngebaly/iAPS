@@ -1,0 +1,46 @@
+name: 6. Approve iAPS Update
+run-name: Approve iAPS Update (${{ github.ref_name }})
+
+# Run this by hand after reading the release notes of a new iAPS version.
+# It copies the latest version of the original iAPS into this fork, then
+# starts "4. Build iAPS", which uploads the new build to TestFlight.
+# Nothing here runs on a schedule: updates are only copied when you approve.
+
+on:
+  workflow_dispatch:
+
+env:
+  UPSTREAM_URL: https://github.com/Artificial-Pancreas/iAPS.git
+  BRANCH: main
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_PAT }}
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+
+      - name: Merge the latest original iAPS
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream "$BRANCH"
+          NEW=$(git rev-list --count HEAD..upstream/$BRANCH)
+          echo "New changes from the original iAPS: $NEW"
+          if [ "$NEW" = "0" ]; then
+            echo "Already up to date."
+          else
+            git log --oneline HEAD..upstream/$BRANCH
+            git merge --no-edit "upstream/$BRANCH"
+            git push origin "$BRANCH"
+          fi
+
+      - name: Start the build
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh workflow run build_iAPS.yml --repo "${{ github.repository }}" --ref "$BRANCH"
